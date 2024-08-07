@@ -3,6 +3,7 @@ package pattern
 import (
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,10 +25,17 @@ type internalOptions struct {
 	workers int
 	// the name of the workerpool
 	name string
+	// the function used to initialise the worker pool i.e connect to a database
+	// and assign it to a syncmap
+	initFunc func() error
 	// the function used against the []byte data - this is done at a worker level
 	workerFunc func(input []byte) ([]byte, error)
+	// the function used to close down the worker pool i.e disconnect from a database
+	closeFunc func() error
 	// the error handler - what we want to do against errors within this worker pool?
 	errorHandler func(err error)
+	// fail fast? if true - will return on first error
+	failFast bool
 }
 
 // Name of the Pool
@@ -46,6 +54,30 @@ func Name(name string) PoolOption {
 func WorkerCount(workers int) PoolOption {
 	return func(opt *internalOptions) error {
 		opt.workers = workers
+		return nil
+	}
+}
+
+// InitFunc is initialize for workerpool
+func CloseFunc(closeFunc func() error) PoolOption {
+	return func(opt *internalOptions) error {
+		opt.closeFunc = closeFunc
+		return nil
+	}
+}
+
+// InitFunc is initialize for workerpool
+func InitFunc(initFunc func() error) PoolOption {
+	return func(opt *internalOptions) error {
+		opt.initFunc = initFunc
+		return nil
+	}
+}
+
+// InitFunc is initialize for workerpool
+func FailFast() PoolOption {
+	return func(opt *internalOptions) error {
+		opt.failFast = true
 		return nil
 	}
 }
@@ -116,7 +148,14 @@ func (p *Pool) Name() string {
 	return p.options.name
 }
 
-func (p *Pool) Start(inputChan chan []byte, outputChan chan<- []byte) {
+func (p *Pool) Start(inputChan chan []byte, outputChans []chan []byte) {
+	if p.options.initFunc != nil {
+		err := p.options.initFunc()
+		if err != nil {
+			p.options.errorHandler(fmt.Errorf("workerpool [%s]: %w", p.options.name, err))
+		}
+	}
+
 	for i := 0; i < p.options.workers; i++ {
 		p.wg.Add(1)
 
@@ -127,17 +166,35 @@ func (p *Pool) Start(inputChan chan []byte, outputChan chan<- []byte) {
 				if err != nil {
 					p.options.errorHandler(fmt.Errorf("workerpool [%s]: %w", p.options.name, err))
 					atomic.AddUint64(p.fail, 1)
+					if p.options.failFast {
+						log.Println("breaking early")
+						return
+					}
 				} else {
-					outputChan <- result
+					for index := range outputChans {
+						outputChans[index] <- result
+					}
+
 					atomic.AddUint64(p.success, 1)
 				}
 
 				atomic.AddUint64(p.total, 1)
 			}
+
+			log.Println("reached here")
 		}()
 	}
 
 	p.wg.Wait()
 
-	close(outputChan)
+	for index := range outputChans {
+		close(outputChans[index])
+	}
+
+	if p.options.closeFunc != nil {
+		err := p.options.closeFunc()
+		if err != nil {
+			p.options.errorHandler(fmt.Errorf("workerpool [%s]: %w", p.options.name, err))
+		}
+	}
 }

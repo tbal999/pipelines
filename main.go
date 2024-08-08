@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"sync"
 	"time"
@@ -9,8 +10,15 @@ import (
 )
 
 func main() {
+	// Create a context with a timeout
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(3 * time.Second)
+		cancel()
+	}()
+
 	// take in json {"number": 1} and multiply the number by 2
-	poolA, err := pipeline.NewPool(
+	poolA, err := pipeline.NewPool(ctx,
 		pipeline.Name("pool A"),
 		pipeline.WorkerCount(5),
 		pipeline.WithWorker(&NumberWorker{Multiplier: 2}, true),
@@ -23,7 +31,7 @@ func main() {
 	}
 
 	// take in json {"number": 1} and multiply the number by 3
-	poolB, err := pipeline.NewPool(
+	poolB, err := pipeline.NewPool(ctx,
 		pipeline.Name("pool B"),
 		pipeline.WorkerCount(5),
 		pipeline.WithWorker(&NumberWorker{Multiplier: 7}, true),
@@ -36,7 +44,7 @@ func main() {
 	}
 
 	// take in json {"number": 1} and multiply the number by 4
-	poolC, err := pipeline.NewPool(
+	poolC, err := pipeline.NewPool(ctx,
 		pipeline.Name("pool C"),
 		pipeline.WorkerCount(5),
 		pipeline.FailFast(),
@@ -49,7 +57,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	poolD, err := pipeline.NewPool(
+	poolD, err := pipeline.NewPool(ctx,
 		pipeline.Name("pool D"),
 		pipeline.WorkerCount(5),
 		pipeline.WithWorker(&NumberWorker{Multiplier: 2}, true),
@@ -70,7 +78,7 @@ func main() {
 			{
 				// this worker consumes from poolA
 				Instance: &poolB,
-				Children: []pipeline.PoolMap{},
+				// no children so this is an output -->>
 			},
 			{
 				// this worker consumes from poolA
@@ -80,13 +88,14 @@ func main() {
 					{
 						// this worker consumes from poolC
 						Instance: &poolD,
+						// no children so this is an output -->>
 					},
 				},
 			},
 		},
 	}
 
-	examplePipeline(&pipeline)
+	examplePipeline(ctx, &pipeline)
 
 	// TODO make below easier to work with
 
@@ -130,26 +139,28 @@ func main() {
 	}
 
 	wg.Wait()
+
+	log.Println("Gracefully stopped")
 }
 
-func examplePipeline(pools *pipeline.PoolMap) {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
+func examplePipeline(ctx context.Context, pools *pipeline.PoolMap) {
 	pipeline.Initialise(pools)
 
 	var inputChan = make(chan []byte)
 
 	go func() {
-		defer wg.Done()
-		// wait 5 seconds before passing in empty data
+		defer close(inputChan)
 		time.Sleep(1 * time.Second)
-		for i := 0; i < 1; i++ {
-			inputChan <- []byte(`{"number": 1}`)
+		// wait 5 seconds before passing in empty data
+		for i := 0; i < 100000; i++ {
+			select {
+			case <-ctx.Done():
+				log.Println("CANCELLED----------------------------------------")
+				return
+			case inputChan <- []byte(`{"number": 1}`):
+			}
 		}
-		close(inputChan)
 	}()
 
 	pipeline.Start(pools, inputChan)
-
-	wg.Wait()
 }

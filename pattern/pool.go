@@ -1,9 +1,10 @@
 package pattern
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"reflect"
+	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,6 +16,7 @@ type Pool struct {
 	success *uint64
 	fail    *uint64
 	total   *uint64
+	ctx     context.Context
 
 	Cache sync.Map
 }
@@ -98,7 +100,7 @@ func ErrorHandler(errorHandler func(err error)) PoolOption {
 	}
 }
 
-func NewPool(opts ...PoolOption) (Pool, error) {
+func NewPool(ctx context.Context, opts ...PoolOption) (Pool, error) {
 	p := Pool{}
 
 	var success, fail, total uint64
@@ -119,6 +121,8 @@ func NewPool(opts ...PoolOption) (Pool, error) {
 	p.wg = &sync.WaitGroup{}
 
 	p.Cache = sync.Map{}
+
+	p.ctx = ctx
 
 	return p, nil
 }
@@ -142,33 +146,20 @@ func (p *Pool) Name() string {
 	return p.options.name
 }
 
-func DeepCopy(dst, src interface{}) {
-	val := reflect.ValueOf(src).Elem()
-	dstVal := reflect.ValueOf(dst).Elem()
-	dstVal.Set(val)
-
-	for i := 0; i < val.NumField(); i++ {
-		field := val.Field(i)
-		if field.Kind() == reflect.Ptr {
-			if !field.IsNil() {
-				newField := reflect.New(field.Elem().Type())
-				dstVal.Field(i).Set(newField)
-				DeepCopy(newField.Interface(), field.Interface())
-			}
-		} else if field.Kind() == reflect.Interface && !field.IsNil() {
-			iface := field.Interface()
-			ifaceType := reflect.TypeOf(iface)
-			clone := reflect.New(ifaceType.Elem()).Interface()
-			DeepCopy(clone, iface)
-			dstVal.Field(i).Set(reflect.ValueOf(clone))
-		}
-	}
-}
-
 func (p *Pool) Start(inputChan chan []byte, outputChans []chan []byte) {
+	workers := []Worker{}
+
+	defer func() {
+		for index := range outputChans {
+			close(outputChans[index])
+		}
+	}()
+
 	for i := 0; i < p.options.workers; i++ {
 		if p.options.clone {
 			clonedWorker := p.options.worker.Clone()
+
+			workers = append(workers, clonedWorker)
 
 			p.wg.Add(1)
 
@@ -180,7 +171,7 @@ func (p *Pool) Start(inputChan chan []byte, outputChans []chan []byte) {
 						p.options.errorHandler(fmt.Errorf("workerpool [%s]: %w", p.options.name, err))
 						atomic.AddUint64(p.fail, 1)
 						if p.options.failFast {
-							break
+							return
 						}
 					} else {
 						for index := range outputChans {
@@ -194,6 +185,8 @@ func (p *Pool) Start(inputChan chan []byte, outputChans []chan []byte) {
 				}
 			}()
 		} else {
+			workers = append(workers, p.options.worker)
+
 			p.wg.Add(1)
 
 			go func() {
@@ -204,7 +197,7 @@ func (p *Pool) Start(inputChan chan []byte, outputChans []chan []byte) {
 						p.options.errorHandler(fmt.Errorf("workerpool [%s]: %w", p.options.name, err))
 						atomic.AddUint64(p.fail, 1)
 						if p.options.failFast {
-							break
+							return
 						}
 					} else {
 						for index := range outputChans {
@@ -222,7 +215,9 @@ func (p *Pool) Start(inputChan chan []byte, outputChans []chan []byte) {
 
 	p.wg.Wait()
 
-	for index := range outputChans {
-		close(outputChans[index])
+	for index := range workers {
+		_ = workers[index].Close()
 	}
+
+	log.Println("done ", p.options.name)
 }

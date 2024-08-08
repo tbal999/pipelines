@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+
 	pipeline "github.com/tbal999/pipelines/pattern"
 )
 
@@ -20,9 +21,9 @@ type NumberWorker struct {
 }
 
 func (n *NumberWorker) Clone() pipeline.Worker {
-    clone := *n
+	clone := *n
 
-    return &clone
+	return &clone
 }
 
 func (n *NumberWorker) Initialise() error {

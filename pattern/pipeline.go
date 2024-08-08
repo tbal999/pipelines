@@ -1,13 +1,14 @@
 package pattern
 
 type PoolMap struct {
+	channels []chan []byte
+
 	Instance *Pool
 	Children []PoolMap
-	Channels []chan []byte
 }
 
 func (p *PoolMap) GetChannels() []chan []byte {
-	return p.Channels
+	return p.channels
 }
 
 func Initialise(workerPools *PoolMap) {
@@ -17,10 +18,10 @@ func Initialise(workerPools *PoolMap) {
 		numChannels = 1
 	}
 
-	workerPools.Channels = make([]chan []byte, numChannels)
+	workerPools.channels = make([]chan []byte, numChannels)
 
-	for i := range workerPools.Channels {
-		workerPools.Channels[i] = make(chan []byte)
+	for i := range workerPools.channels {
+		workerPools.channels[i] = make(chan []byte)
 	}
 
 	for index := range workerPools.Children {
@@ -30,10 +31,10 @@ func Initialise(workerPools *PoolMap) {
 
 func Start(workerPools *PoolMap, inputChan chan []byte) {
 	if workerPools.Instance != nil {
-		go workerPools.Instance.Start(inputChan, workerPools.Channels)
+		go workerPools.Instance.Start(inputChan, workerPools.channels)
 	}
 
 	for index := range workerPools.Children {
-		go Start(&workerPools.Children[index], workerPools.Channels[index])
+		go Start(&workerPools.Children[index], workerPools.channels[index])
 	}
 }

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
 	"log"
 	"sync"
 	"time"
@@ -15,26 +13,7 @@ func main() {
 	poolA, err := pipeline.NewPool(
 		pipeline.Name("pool A"),
 		pipeline.WorkerCount(5),
-		pipeline.InitFunc(func() error {
-			log.Println("pool A starting")
-			return nil
-		}),
-		pipeline.CloseFunc(func() error {
-			log.Println("pool A stopping")
-			return nil
-		}),
-		pipeline.Function(func(input []byte) ([]byte, error) {
-			type Input struct {
-				Number int
-			}
-
-			var item Input
-			_ = json.Unmarshal(input, &item)
-
-			item.Number = item.Number * 2
-
-			return json.Marshal(item)
-		}),
+		pipeline.WithWorker(&NumberWorker{Multiplier: 2}, true),
 		pipeline.ErrorHandler(func(err error) {
 			log.Println(err.Error())
 		}),
@@ -47,26 +26,7 @@ func main() {
 	poolB, err := pipeline.NewPool(
 		pipeline.Name("pool B"),
 		pipeline.WorkerCount(5),
-		pipeline.InitFunc(func() error {
-			log.Println("pool B starting")
-			return nil
-		}),
-		pipeline.CloseFunc(func() error {
-			log.Println("pool B stopping")
-			return nil
-		}),
-		pipeline.Function(func(input []byte) ([]byte, error) {
-			type Input struct {
-				Number int
-			}
-
-			var item Input
-			_ = json.Unmarshal(input, &item)
-
-			item.Number = item.Number * 3
-
-			return json.Marshal(item)
-		}),
+		pipeline.WithWorker(&NumberWorker{Multiplier: 7}, true),
 		pipeline.ErrorHandler(func(err error) {
 			log.Println(err.Error())
 		}),
@@ -79,33 +39,8 @@ func main() {
 	poolC, err := pipeline.NewPool(
 		pipeline.Name("pool C"),
 		pipeline.WorkerCount(5),
-		pipeline.InitFunc(func() error {
-			log.Println("pool C starting")
-			return nil
-		}),
 		pipeline.FailFast(),
-		pipeline.CloseFunc(func() error {
-			log.Println("pool C stopping")
-			return nil
-		}),
-		pipeline.Function(func(input []byte) ([]byte, error) {
-			type Input struct {
-				Number int
-			}
-
-			var item Input
-			_ = json.Unmarshal(input, &item)
-
-			item.Number = item.Number * 4
-
-			if item.Number % 2 == 0 {
-				return nil, errors.New("argh no")
-			}
-
-			bytes, _ := json.Marshal(item)
-
-			return bytes, nil
-		}),
+		pipeline.WithWorker(&NumberWorker{Multiplier: 1}, true),
 		pipeline.ErrorHandler(func(err error) {
 			log.Println(err.Error())
 		}),
@@ -117,26 +52,7 @@ func main() {
 	poolD, err := pipeline.NewPool(
 		pipeline.Name("pool D"),
 		pipeline.WorkerCount(5),
-		pipeline.InitFunc(func() error {
-			log.Println("pool D starting")
-			return nil
-		}),
-		pipeline.CloseFunc(func() error {
-			log.Println("pool D stopping")
-			return nil
-		}),
-		pipeline.Function(func(input []byte) ([]byte, error) {
-			type Input struct {
-				Number int
-			}
-
-			var item Input
-			_ = json.Unmarshal(input, &item)
-
-			item.Number = item.Number * 5
-
-			return json.Marshal(item)
-		}),
+		pipeline.WithWorker(&NumberWorker{Multiplier: 2}, true),
 		pipeline.ErrorHandler(func(err error) {
 			log.Println(err.Error())
 		}),
@@ -154,6 +70,7 @@ func main() {
 			{
 				// this worker consumes from poolA
 				Instance: &poolB,
+				Children: []pipeline.PoolMap{},
 			},
 			{
 				// this worker consumes from poolA
@@ -170,6 +87,8 @@ func main() {
 	}
 
 	examplePipeline(&pipeline)
+
+	// TODO make below easier to work with
 
 	channels1 := pipeline.Children[0].GetChannels()             // poolB
 	channels2 := pipeline.Children[1].GetChannels()             // poolC
@@ -214,18 +133,23 @@ func main() {
 }
 
 func examplePipeline(pools *pipeline.PoolMap) {
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 	pipeline.Initialise(pools)
 
 	var inputChan = make(chan []byte)
 
 	go func() {
+		defer wg.Done()
 		// wait 5 seconds before passing in empty data
 		time.Sleep(1 * time.Second)
-		for i := 0; i < 3; i++ {
+		for i := 0; i < 1; i++ {
 			inputChan <- []byte(`{"number": 1}`)
 		}
 		close(inputChan)
 	}()
 
 	pipeline.Start(pools, inputChan)
+
+	wg.Wait()
 }

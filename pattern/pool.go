@@ -3,7 +3,7 @@ package pattern
 import (
 	"errors"
 	"fmt"
-	"log"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,27 +15,33 @@ type Pool struct {
 	success *uint64
 	fail    *uint64
 	total   *uint64
+
+	Cache sync.Map
 }
 
 // PoolOption functional options within Pool
 type PoolOption func(opt *internalOptions) error
 
 type internalOptions struct {
+	// the worker that is used in the pool
+	worker Worker
+	// should we clone the worker object per worker?
+	clone bool
 	// how many workers do we want in the workerpool?
 	workers int
 	// the name of the workerpool
 	name string
-	// the function used to initialise the worker pool i.e connect to a database
-	// and assign it to a syncmap
-	initFunc func() error
-	// the function used against the []byte data - this is done at a worker level
-	workerFunc func(input []byte) ([]byte, error)
-	// the function used to close down the worker pool i.e disconnect from a database
-	closeFunc func() error
 	// the error handler - what we want to do against errors within this worker pool?
 	errorHandler func(err error)
 	// fail fast? if true - will return on first error
 	failFast bool
+}
+
+type Worker interface {
+	Action(input []byte) ([]byte, error)
+	Initialise() error
+	Close() error
+	Clone() Worker
 }
 
 // Name of the Pool
@@ -58,18 +64,16 @@ func WorkerCount(workers int) PoolOption {
 	}
 }
 
-// InitFunc is initialize for workerpool
-func CloseFunc(closeFunc func() error) PoolOption {
+// WithWorker is how many workers are created
+func WithWorker(worker Worker, clone bool) PoolOption {
 	return func(opt *internalOptions) error {
-		opt.closeFunc = closeFunc
-		return nil
-	}
-}
+		if worker == nil {
+			return errors.New("must contain a worker")
+		}
 
-// InitFunc is initialize for workerpool
-func InitFunc(initFunc func() error) PoolOption {
-	return func(opt *internalOptions) error {
-		opt.initFunc = initFunc
+		opt.worker = worker
+
+		opt.clone = clone
 		return nil
 	}
 }
@@ -78,18 +82,6 @@ func InitFunc(initFunc func() error) PoolOption {
 func FailFast() PoolOption {
 	return func(opt *internalOptions) error {
 		opt.failFast = true
-		return nil
-	}
-}
-
-// WorkerCount is how many workers are created
-func Function(workerFunc func(input []byte) ([]byte, error)) PoolOption {
-	return func(opt *internalOptions) error {
-		if workerFunc == nil {
-			return errors.New("must contain a workerFunc")
-		}
-
-		opt.workerFunc = workerFunc
 		return nil
 	}
 }
@@ -126,6 +118,8 @@ func NewPool(opts ...PoolOption) (Pool, error) {
 
 	p.wg = &sync.WaitGroup{}
 
+	p.Cache = sync.Map{}
+
 	return p, nil
 }
 
@@ -148,53 +142,87 @@ func (p *Pool) Name() string {
 	return p.options.name
 }
 
-func (p *Pool) Start(inputChan chan []byte, outputChans []chan []byte) {
-	if p.options.initFunc != nil {
-		err := p.options.initFunc()
-		if err != nil {
-			p.options.errorHandler(fmt.Errorf("workerpool [%s]: %w", p.options.name, err))
+func DeepCopy(dst, src interface{}) {
+	val := reflect.ValueOf(src).Elem()
+	dstVal := reflect.ValueOf(dst).Elem()
+	dstVal.Set(val)
+
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		if field.Kind() == reflect.Ptr {
+			if !field.IsNil() {
+				newField := reflect.New(field.Elem().Type())
+				dstVal.Field(i).Set(newField)
+				DeepCopy(newField.Interface(), field.Interface())
+			}
+		} else if field.Kind() == reflect.Interface && !field.IsNil() {
+			iface := field.Interface()
+			ifaceType := reflect.TypeOf(iface)
+			clone := reflect.New(ifaceType.Elem()).Interface()
+			DeepCopy(clone, iface)
+			dstVal.Field(i).Set(reflect.ValueOf(clone))
 		}
 	}
+}
 
+func (p *Pool) Start(inputChan chan []byte, outputChans []chan []byte) {
 	for i := 0; i < p.options.workers; i++ {
-		p.wg.Add(1)
+		if p.options.clone {
+			clonedWorker := p.options.worker.Clone()
 
-		go func() {
-			defer p.wg.Done()
-			for x := range inputChan {
-				result, err := p.options.workerFunc(x)
-				if err != nil {
-					p.options.errorHandler(fmt.Errorf("workerpool [%s]: %w", p.options.name, err))
-					atomic.AddUint64(p.fail, 1)
-					if p.options.failFast {
-						log.Println("breaking early")
-						return
-					}
-				} else {
-					for index := range outputChans {
-						outputChans[index] <- result
+			p.wg.Add(1)
+
+			go func() {
+				defer p.wg.Done()
+				for x := range inputChan {
+					result, err := clonedWorker.Action(x)
+					if err != nil {
+						p.options.errorHandler(fmt.Errorf("workerpool [%s]: %w", p.options.name, err))
+						atomic.AddUint64(p.fail, 1)
+						if p.options.failFast {
+							break
+						}
+					} else {
+						for index := range outputChans {
+							outputChans[index] <- result
+						}
+
+						atomic.AddUint64(p.success, 1)
 					}
 
-					atomic.AddUint64(p.success, 1)
+					atomic.AddUint64(p.total, 1)
 				}
+			}()
+		} else {
+			p.wg.Add(1)
 
-				atomic.AddUint64(p.total, 1)
-			}
+			go func() {
+				defer p.wg.Done()
+				for x := range inputChan {
+					result, err := p.options.worker.Action(x)
+					if err != nil {
+						p.options.errorHandler(fmt.Errorf("workerpool [%s]: %w", p.options.name, err))
+						atomic.AddUint64(p.fail, 1)
+						if p.options.failFast {
+							break
+						}
+					} else {
+						for index := range outputChans {
+							outputChans[index] <- result
+						}
 
-			log.Println("reached here")
-		}()
+						atomic.AddUint64(p.success, 1)
+					}
+
+					atomic.AddUint64(p.total, 1)
+				}
+			}()
+		}
 	}
 
 	p.wg.Wait()
 
 	for index := range outputChans {
 		close(outputChans[index])
-	}
-
-	if p.options.closeFunc != nil {
-		err := p.options.closeFunc()
-		if err != nil {
-			p.options.errorHandler(fmt.Errorf("workerpool [%s]: %w", p.options.name, err))
-		}
 	}
 }

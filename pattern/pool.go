@@ -4,21 +4,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
 )
 
 type Pool struct {
-	wg      *sync.WaitGroup
+	mu      *sync.Mutex
 	options *internalOptions
 	success *uint64
 	fail    *uint64
 	total   *uint64
 	ctx     context.Context
 
-	Cache sync.Map
+	Channels []chan []byte
+}
+
+func (p *Pool) GetOutputChannels() []chan []byte {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.Channels
 }
 
 // PoolOption functional options within Pool
@@ -67,7 +73,7 @@ func WorkerCount(workers int) PoolOption {
 }
 
 // WithWorker is how many workers are created
-func WithWorker(worker Worker, clone bool) PoolOption {
+func WithWorker(worker Worker) PoolOption {
 	return func(opt *internalOptions) error {
 		if worker == nil {
 			return errors.New("must contain a worker")
@@ -75,7 +81,6 @@ func WithWorker(worker Worker, clone bool) PoolOption {
 
 		opt.worker = worker
 
-		opt.clone = clone
 		return nil
 	}
 }
@@ -96,11 +101,12 @@ func ErrorHandler(errorHandler func(err error)) PoolOption {
 		}
 
 		opt.errorHandler = errorHandler
+		
 		return nil
 	}
 }
 
-func NewPool(ctx context.Context, opts ...PoolOption) (Pool, error) {
+func NewPool(ctx context.Context, opts ...PoolOption) (*Pool, error) {
 	p := Pool{}
 
 	var success, fail, total uint64
@@ -114,17 +120,15 @@ func NewPool(ctx context.Context, opts ...PoolOption) (Pool, error) {
 	for _, opt := range opts {
 		err := opt(p.options)
 		if err != nil {
-			return p, err
+			return &p, err
 		}
 	}
 
-	p.wg = &sync.WaitGroup{}
-
-	p.Cache = sync.Map{}
-
 	p.ctx = ctx
 
-	return p, nil
+	p.mu = &sync.Mutex{}
+
+	return &p, nil
 }
 
 func (p *Pool) TotalSuccess() uint64 {
@@ -146,78 +150,59 @@ func (p *Pool) Name() string {
 	return p.options.name
 }
 
-func (p *Pool) Start(inputChan chan []byte, outputChans []chan []byte) {
+func (p *Pool) Start(inputChan chan []byte) {
+	wg := &sync.WaitGroup{}
+
 	workers := []Worker{}
 
-	defer func() {
-		for index := range outputChans {
-			close(outputChans[index])
-		}
-	}()
-
 	for i := 0; i < p.options.workers; i++ {
-		if p.options.clone {
-			clonedWorker := p.options.worker.Clone()
+		clonedWorker := p.options.worker.Clone()
 
-			workers = append(workers, clonedWorker)
-
-			p.wg.Add(1)
-
-			go func() {
-				defer p.wg.Done()
-				for x := range inputChan {
-					result, err := clonedWorker.Action(x)
-					if err != nil {
-						p.options.errorHandler(fmt.Errorf("workerpool [%s]: %w", p.options.name, err))
-						atomic.AddUint64(p.fail, 1)
-						if p.options.failFast {
-							return
-						}
-					} else {
-						for index := range outputChans {
-							outputChans[index] <- result
-						}
-
-						atomic.AddUint64(p.success, 1)
-					}
-
-					atomic.AddUint64(p.total, 1)
-				}
-			}()
-		} else {
-			workers = append(workers, p.options.worker)
-
-			p.wg.Add(1)
-
-			go func() {
-				defer p.wg.Done()
-				for x := range inputChan {
-					result, err := p.options.worker.Action(x)
-					if err != nil {
-						p.options.errorHandler(fmt.Errorf("workerpool [%s]: %w", p.options.name, err))
-						atomic.AddUint64(p.fail, 1)
-						if p.options.failFast {
-							return
-						}
-					} else {
-						for index := range outputChans {
-							outputChans[index] <- result
-						}
-
-						atomic.AddUint64(p.success, 1)
-					}
-
-					atomic.AddUint64(p.total, 1)
-				}
-			}()
+		err := clonedWorker.Initialise()
+		if err != nil {
+			p.options.errorHandler(fmt.Errorf("workerpool init error [%s]: %w", p.options.name, err))
+			continue
 		}
+
+		workers = append(workers, clonedWorker)
+
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			for x := range inputChan {
+				result, err := clonedWorker.Action(x)
+				if err != nil {
+					p.options.errorHandler(fmt.Errorf("workerpool action error [%s]: %w", p.options.name, err))
+
+					atomic.AddUint64(p.fail, 1)
+
+					if p.options.failFast {
+						return
+					}
+				} else {
+					for index := range p.Channels {
+						p.Channels[index] <- result
+					}
+
+					atomic.AddUint64(p.success, 1)
+				}
+
+				atomic.AddUint64(p.total, 1)
+			}
+		}()
 	}
 
-	p.wg.Wait()
+	wg.Wait()
 
 	for index := range workers {
-		_ = workers[index].Close()
+		err := workers[index].Close()
+		if err != nil {
+			p.options.errorHandler(fmt.Errorf("workerpool close error [%s]: %w", p.options.name, err))
+		}
 	}
 
-	log.Println("done ", p.options.name)
+	for index := range p.Channels {
+		close(p.Channels[index])
+	}
 }

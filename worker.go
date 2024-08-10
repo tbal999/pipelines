@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 
 	pipeline "github.com/tbal999/pipelines/pattern"
 )
@@ -27,10 +28,12 @@ func (n *NumberWorker) Clone() pipeline.Worker {
 }
 
 func (n *NumberWorker) Initialise() error {
+	log.Println("starting worker", n)
 	return nil
 }
 
 func (n *NumberWorker) Close() error {
+	log.Println("stopping worker", n)
 	return nil
 }
 

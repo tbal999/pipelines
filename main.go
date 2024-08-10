@@ -4,24 +4,18 @@ import (
 	"context"
 	"log"
 	"sync"
-	"time"
 
 	pipeline "github.com/tbal999/pipelines/pattern"
 )
 
 func main() {
-	// Create a context with a timeout
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(3 * time.Second)
-		cancel()
-	}()
+	ctx := context.Background()
 
 	// take in json {"number": 1} and multiply the number by 2
 	poolA, err := pipeline.NewPool(ctx,
 		pipeline.Name("pool A"),
-		pipeline.WorkerCount(5),
-		pipeline.WithWorker(&NumberWorker{Multiplier: 2}, true),
+		pipeline.WorkerCount(1),
+		pipeline.WithWorker(&NumberWorker{Multiplier: 1}),
 		pipeline.ErrorHandler(func(err error) {
 			log.Println(err.Error())
 		}),
@@ -33,8 +27,8 @@ func main() {
 	// take in json {"number": 1} and multiply the number by 3
 	poolB, err := pipeline.NewPool(ctx,
 		pipeline.Name("pool B"),
-		pipeline.WorkerCount(5),
-		pipeline.WithWorker(&NumberWorker{Multiplier: 7}, true),
+		pipeline.WorkerCount(2),
+		pipeline.WithWorker(&NumberWorker{Multiplier: 7}),
 		pipeline.ErrorHandler(func(err error) {
 			log.Println(err.Error())
 		}),
@@ -46,9 +40,9 @@ func main() {
 	// take in json {"number": 1} and multiply the number by 4
 	poolC, err := pipeline.NewPool(ctx,
 		pipeline.Name("pool C"),
-		pipeline.WorkerCount(5),
+		pipeline.WorkerCount(2),
 		pipeline.FailFast(),
-		pipeline.WithWorker(&NumberWorker{Multiplier: 1}, true),
+		pipeline.WithWorker(&NumberWorker{Multiplier: 2}),
 		pipeline.ErrorHandler(func(err error) {
 			log.Println(err.Error())
 		}),
@@ -59,8 +53,8 @@ func main() {
 
 	poolD, err := pipeline.NewPool(ctx,
 		pipeline.Name("pool D"),
-		pipeline.WorkerCount(5),
-		pipeline.WithWorker(&NumberWorker{Multiplier: 2}, true),
+		pipeline.WorkerCount(2),
+		pipeline.WithWorker(&NumberWorker{Multiplier: 3}),
 		pipeline.ErrorHandler(func(err error) {
 			log.Println(err.Error())
 		}),
@@ -70,97 +64,88 @@ func main() {
 	}
 
 	// a tree of instances that form a pipeline
-	pipeline := pipeline.PoolMap{
-		// this worker takes in bytes
-		Instance: &poolA,
-		// and publishes to these workers
-		Children: []pipeline.PoolMap{
+	workerPipeline := pipeline.PoolTree{
+		// poolA worker takes in bytes
+		Instance: poolA,
+		// and publishes to these workers (poolB and poolC)
+		Children: []pipeline.PoolTree{
 			{
-				// this worker consumes from poolA
-				Instance: &poolB,
-				// no children so this is an output -->>
+				// poolB worker consumes from poolA
+				Instance: poolB,
+				// no children so this has 1 output channel which _needs_ to be read from
 			},
 			{
-				// this worker consumes from poolA
-				Instance: &poolC,
-				// and publishes to these workers
-				Children: []pipeline.PoolMap{
+				// poolC worker consumes from poolA
+				Instance: poolC,
+				// and publishes to these workers (poolD)
+				Children: []pipeline.PoolTree{
 					{
 						// this worker consumes from poolC
-						Instance: &poolD,
-						// no children so this is an output -->>
+						Instance: poolD,
+						// no children so this has 1 output channel which _needs_ to be read from
 					},
 				},
 			},
 		},
 	}
 
-	examplePipeline(ctx, &pipeline)
+	pipeline.Initialise(&workerPipeline)
 
-	// TODO make below easier to work with
-
-	channels1 := pipeline.Children[0].GetChannels()             // poolB
-	channels2 := pipeline.Children[1].GetChannels()             // poolC
-	channels3 := pipeline.Children[1].Children[0].GetChannels() // poolD
-
-	wg := sync.WaitGroup{}
-
-	for index := range channels1 {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-			for item := range channels1[index] {
-				log.Println(pipeline.Children[0].Instance.Name(), string(item))
-			}
-		}()
-	}
-
-	for index := range channels2 {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-			for item := range channels2[index] {
-				log.Println(pipeline.Children[1].Instance.Name(), string(item))
-			}
-		}()
-	}
-
-	for index := range channels3 {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-			for item := range channels3[index] {
-				log.Println(pipeline.Children[1].Children[0].Instance.Name(), string(item))
-			}
-		}()
-	}
-
-	wg.Wait()
-
-	log.Println("Gracefully stopped")
-}
-
-func examplePipeline(ctx context.Context, pools *pipeline.PoolMap) {
-	pipeline.Initialise(pools)
+	poolBOutput, poolBName := poolB.GetOutputChannels(), poolB.Name() // poolB
+	poolDOutput, poolDName := poolD.GetOutputChannels(), poolD.Name() // poolD
 
 	var inputChan = make(chan []byte)
 
 	go func() {
-		defer close(inputChan)
-		time.Sleep(1 * time.Second)
-		// wait 5 seconds before passing in empty data
-		for i := 0; i < 100000; i++ {
-			select {
-			case <-ctx.Done():
-				log.Println("CANCELLED----------------------------------------")
-				return
-			case inputChan <- []byte(`{"number": 1}`):
-			}
+		defer func() {
+			close(inputChan)
+			log.Println("closed input channel")
+		}()
+
+		for i := 0; i < 4; i++ {
+			inputChan <- []byte(`{"number": 1}`)
 		}
 	}()
 
-	pipeline.Start(pools, inputChan)
+	pipeline.Start(&workerPipeline, inputChan)
+
+	wg := sync.WaitGroup{}
+
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+
+		for index := range poolBOutput {
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+				for item := range poolBOutput[index] {
+					log.Println(poolBName, string(item))
+				}
+			}()
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+
+		for index := range poolDOutput {
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+				for item := range poolDOutput[index] {
+					log.Println(poolDName, string(item))
+				}
+			}()
+		}
+	}()
+
+	log.Println("Waiting gracefully...")
+
+	wg.Wait()
+
+	log.Println("Gracefully stopped")
 }

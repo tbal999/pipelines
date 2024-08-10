@@ -26,7 +26,7 @@ func Initialise(workerPools *PoolTree) {
 	}
 }
 
-func Start(workerPools *PoolTree, inputChan chan []byte) {
+func Start(workerPools *PoolTree, inputChan <-chan []byte) {
 	if workerPools.Instance != nil {
 		go workerPools.Instance.Start(inputChan)
 	}

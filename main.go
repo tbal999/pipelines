@@ -4,19 +4,20 @@ import (
 	"context"
 	"log"
 	"sync"
+	"time"
 
-	pipeline "github.com/tbal999/pipelines/pattern"
+	"github.com/tbal999/pipelines/pattern"
+	"github.com/tbal999/pipelines/workers"
 )
 
 func main() {
 	ctx := context.Background()
 
-	// take in json {"number": 1} and multiply the number by 2
-	poolA, err := pipeline.NewPool(ctx,
-		pipeline.Name("pool A"),
-		pipeline.WorkerCount(1),
-		pipeline.WithWorker(&NumberWorker{Multiplier: 1}),
-		pipeline.ErrorHandler(func(err error) {
+	rowLoggingPool, err := pattern.NewPool(ctx,
+		pattern.Name("csv row logging workerpool"),
+		pattern.WorkerCount(1),
+		pattern.WithWorker(&workers.RowLogger{}),
+		pattern.ErrorHandler(func(err error) {
 			log.Println(err.Error())
 		}),
 	)
@@ -24,38 +25,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// take in json {"number": 1} and multiply the number by 3
-	poolB, err := pipeline.NewPool(ctx,
-		pipeline.Name("pool B"),
-		pipeline.WorkerCount(2),
-		pipeline.WithWorker(&NumberWorker{Multiplier: 7}),
-		pipeline.ErrorHandler(func(err error) {
-			log.Println(err.Error())
-		}),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// take in json {"number": 1} and multiply the number by 4
-	poolC, err := pipeline.NewPool(ctx,
-		pipeline.Name("pool C"),
-		pipeline.WorkerCount(2),
-		pipeline.FailFast(),
-		pipeline.WithWorker(&NumberWorker{Multiplier: 2}),
-		pipeline.ErrorHandler(func(err error) {
-			log.Println(err.Error())
-		}),
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	poolD, err := pipeline.NewPool(ctx,
-		pipeline.Name("pool D"),
-		pipeline.WorkerCount(2),
-		pipeline.WithWorker(&NumberWorker{Multiplier: 3}),
-		pipeline.ErrorHandler(func(err error) {
+	rowLoggingPool2, err := pattern.NewPool(ctx,
+		pattern.Name("csv row logging workerpool"),
+		pattern.WorkerCount(1),
+		pattern.WithWorker(&workers.RowLogger{}),
+		pattern.ErrorHandler(func(err error) {
 			log.Println(err.Error())
 		}),
 	)
@@ -64,80 +38,58 @@ func main() {
 	}
 
 	// a tree of instances that form a pipeline
-	workerPipeline := pipeline.PoolTree{
-		// poolA worker takes in bytes
-		Instance: poolA,
-		// and publishes to these workers (poolB and poolC)
-		Children: []pipeline.PoolTree{
+	workerPipeline := pattern.PoolTree{
+		// rowLoggingPool worker takes in bytes & logs them
+		Instance: rowLoggingPool,
+		Children: []pattern.PoolTree{
 			{
-				// poolB worker consumes from poolA
-				Instance: poolB,
-				// no children so this has 1 output channel which _needs_ to be read from
-			},
-			{
-				// poolC worker consumes from poolA
-				Instance: poolC,
-				// and publishes to these workers (poolD)
-				Children: []pipeline.PoolTree{
-					{
-						// this worker consumes from poolC
-						Instance: poolD,
-						// no children so this has 1 output channel which _needs_ to be read from
-					},
-				},
+				Instance: rowLoggingPool2,
 			},
 		},
 	}
 
-	pipeline.Initialise(&workerPipeline)
+	pattern.Initialise(&workerPipeline)
 
-	poolBOutput, poolBName := poolB.GetOutputChannels(), poolB.Name() // poolB
-	poolDOutput, poolDName := poolD.GetOutputChannels(), poolD.Name() // poolD
+	inputChan, err := workers.ReadCSVWithHeader("./testdata/example.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	var inputChan = make(chan []byte)
+	pattern.Start(&workerPipeline, inputChan)
 
-	go func() {
-		defer func() {
-			close(inputChan)
-			log.Println("closed input channel")
-		}()
+	drain(rowLoggingPool2)
 
-		for i := 0; i < 4; i++ {
-			inputChan <- []byte(`{"number": 1}`)
-		}
-	}()
+	time.Sleep(2 * time.Second)
 
-	pipeline.Start(&workerPipeline, inputChan)
+	pattern.Initialise(&workerPipeline)
+
+	inputChan2, err := workers.ReadCSVWithHeader("./testdata/example.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pattern.Start(&workerPipeline, inputChan2)
+
+	drain(rowLoggingPool2)
+}
+
+func drain(workerPool *pattern.Pool) {
+	poolChannels, _ := workerPool.GetOutputChannels(), workerPool.Name() // rowLoggingPool
 
 	wg := sync.WaitGroup{}
 
-	wg.Add(2)
+	wg.Add(1)
 
 	go func() {
 		defer wg.Done()
 
-		for index := range poolBOutput {
+		for index := range poolChannels {
 			wg.Add(1)
 
 			go func() {
 				defer wg.Done()
-				for item := range poolBOutput[index] {
-					log.Println(poolBName, string(item))
-				}
-			}()
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-
-		for index := range poolDOutput {
-			wg.Add(1)
-
-			go func() {
-				defer wg.Done()
-				for item := range poolDOutput[index] {
-					log.Println(poolDName, string(item))
+				for range poolChannels[index] {
+					// drain the channel
 				}
 			}()
 		}

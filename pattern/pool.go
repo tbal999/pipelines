@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -158,7 +159,18 @@ func (p *Pool) Name() string {
 	return p.options.name
 }
 
+func (p *Pool) Lock() {
+	p.mu.Lock()
+}
+
+func (p *Pool) Unlock() {
+	p.mu.Unlock()
+}
+
 func (p *Pool) Start(inputChan <-chan []byte) {
+	p.Lock()
+	defer p.Unlock()
+
 	wg := &sync.WaitGroup{}
 
 	workers := []Worker{}
@@ -179,6 +191,14 @@ func (p *Pool) Start(inputChan <-chan []byte) {
 		go func() {
 			defer wg.Done()
 			for x := range inputChan {
+				select {
+				case <-p.ctx.Done():
+					log.Println("context cancelled - stopped worker immediately")
+					return
+				default:
+					// continue processing
+				}
+
 				result, err := clonedWorker.Action(x)
 				if err != nil {
 					p.options.errorHandler(fmt.Errorf("workerpool action error [%s]: %w", p.options.name, err))

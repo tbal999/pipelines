@@ -1,13 +1,17 @@
 package pattern
 
-import "log"
+import (
+	"log"
+)
 
 type PoolTree struct {
 	Instance *Pool
 	Children []PoolTree
 }
 
-func Initialise(workerPools *PoolTree) {
+func (workerPools *PoolTree) Initialise() {
+	workerPools.Instance.Lock()
+	defer workerPools.Instance.Unlock()
 	numChannels := len(workerPools.Children)
 
 	if numChannels == 0 {
@@ -22,11 +26,12 @@ func Initialise(workerPools *PoolTree) {
 	}
 
 	for index := range workerPools.Children {
-		Initialise(&workerPools.Children[index])
+		workerPools.Children[index].Initialise()
 	}
 }
 
-func Start(workerPools *PoolTree, inputChan <-chan []byte) {
+func (workerPools *PoolTree) Start(inputChan <-chan []byte) {
+
 	if workerPools.Instance != nil {
 		go workerPools.Instance.Start(inputChan)
 	}
@@ -34,6 +39,6 @@ func Start(workerPools *PoolTree, inputChan <-chan []byte) {
 	log.Println(workerPools.Instance.Name(), len(workerPools.Instance.Channels))
 
 	for index := range workerPools.Children {
-		go Start(&workerPools.Children[index], workerPools.Instance.Channels[index])
+		go workerPools.Children[index].Start(workerPools.Instance.Channels[index])
 	}
 }

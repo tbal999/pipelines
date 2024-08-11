@@ -11,11 +11,15 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer cancel()
+		time.Sleep(1 * time.Second)
+	}()
 
 	rowLoggingPool, err := pattern.NewPool(ctx,
 		pattern.Name("csv row logging workerpool"),
-		pattern.WorkerCount(1),
+		pattern.WorkerCount(100),
 		pattern.WithWorker(&workers.RowLogger{}),
 		pattern.ErrorHandler(func(err error) {
 			log.Println(err.Error())
@@ -27,7 +31,7 @@ func main() {
 
 	rowLoggingPool2, err := pattern.NewPool(ctx,
 		pattern.Name("csv row logging workerpool"),
-		pattern.WorkerCount(1),
+		pattern.WorkerCount(100),
 		pattern.WithWorker(&workers.RowLogger{}),
 		pattern.ErrorHandler(func(err error) {
 			log.Println(err.Error())
@@ -48,32 +52,32 @@ func main() {
 		},
 	}
 
-	pattern.Initialise(&workerPipeline)
+	workerPipeline.Initialise()
 
 	inputChan, err := workers.ReadCSVWithHeader("./testdata/example.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	pattern.Start(&workerPipeline, inputChan)
+	workerPipeline.Start(inputChan)
 
-	drain(rowLoggingPool2)
+	drainWorkerPool(rowLoggingPool2)
 
 	time.Sleep(2 * time.Second)
 
-	pattern.Initialise(&workerPipeline)
+	workerPipeline.Initialise()
 
 	inputChan2, err := workers.ReadCSVWithHeader("./testdata/example.csv")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	pattern.Start(&workerPipeline, inputChan2)
+	workerPipeline.Start(inputChan2)
 
-	drain(rowLoggingPool2)
+	drainWorkerPool(rowLoggingPool2)
 }
 
-func drain(workerPool *pattern.Pool) {
+func drainWorkerPool(workerPool *pattern.Pool) {
 	poolChannels, _ := workerPool.GetOutputChannels(), workerPool.Name() // rowLoggingPool
 
 	wg := sync.WaitGroup{}
@@ -94,8 +98,6 @@ func drain(workerPool *pattern.Pool) {
 			}()
 		}
 	}()
-
-	log.Println("Waiting gracefully...")
 
 	wg.Wait()
 

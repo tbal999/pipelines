@@ -16,6 +16,8 @@ var cache sync.Map
 
 type Mapper struct {
 	parser *jsonata.Expr
+
+	Log bool
 }
 
 func (w *Mapper) Clone() pipeline.Worker {
@@ -43,10 +45,13 @@ func (w *Mapper) Initialise(configBytes []byte) error {
 
 	w.parser = parser
 
+	log.Println("mapper started")
+
 	return nil
 }
 
 func (w *Mapper) Close() error {
+	log.Println("mapper stopped")
 	return nil
 }
 
@@ -56,7 +61,9 @@ func (w *Mapper) Action(input []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	log.Println(string(result))
+	if w.Log {
+		log.Println(string(result))
+	}
 
 	return result, nil
 }

@@ -2,14 +2,16 @@ package pattern
 
 import "sync"
 
+// PoolTree structure is a tree of workerpools
+// that feed downwards to form a pipeline
 type PoolTree struct {
-	Instance *Pool
-	Children []PoolTree
+	WorkerPool *Pool
+	Children   []PoolTree
 }
 
 func (workerPools *PoolTree) initialise() {
-	workerPools.Instance.Lock()
-	defer workerPools.Instance.Unlock()
+	workerPools.WorkerPool.Lock()
+	defer workerPools.WorkerPool.Unlock()
 
 	numChannels := len(workerPools.Children)
 
@@ -19,13 +21,13 @@ func (workerPools *PoolTree) initialise() {
 		numChannels = 1
 	}
 
-	workerPools.Instance.Channels = make([]chan []byte, numChannels)
+	workerPools.WorkerPool.Channels = make([]chan []byte, numChannels)
 
-	for i := range workerPools.Instance.Channels {
-		if workerPools.Instance.BufferSize() == 0 {
-			workerPools.Instance.Channels[i] = make(chan []byte)
+	for i := range workerPools.WorkerPool.Channels {
+		if workerPools.WorkerPool.BufferSize() == 0 {
+			workerPools.WorkerPool.Channels[i] = make(chan []byte)
 		} else {
-			workerPools.Instance.Channels[i] = make(chan []byte, workerPools.Instance.BufferSize())
+			workerPools.WorkerPool.Channels[i] = make(chan []byte, workerPools.WorkerPool.BufferSize())
 		}
 	}
 
@@ -39,20 +41,22 @@ func (workerPools *PoolTree) Start(inputChan <-chan []byte) {
 
 	wg := &sync.WaitGroup{}
 
-	if workerPools.Instance != nil {
+	if workerPools.WorkerPool != nil {
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			workerPools.Instance.Start(inputChan)
-		}()
-	}
 
-	for index := range workerPools.Children {
-		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			workerPools.Children[index].Start(workerPools.Instance.Channels[index])
+			workerPools.WorkerPool.Start(inputChan)
 		}()
+
+		for index := range workerPools.Children {
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+				workerPools.Children[index].Start(workerPools.WorkerPool.Channels[index])
+			}()
+		}
 	}
 
 	wg.Wait()

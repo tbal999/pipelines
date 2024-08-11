@@ -3,6 +3,8 @@ package workers
 import (
 	"log"
 
+	"time"
+
 	pipeline "github.com/tbal999/pipelines/pattern"
 )
 
@@ -24,8 +26,8 @@ func (w *RowLogger) Close() error {
 }
 
 func (w *RowLogger) Action(input []byte) ([]byte, error) {
+	time.Sleep(1 * time.Second)
 	log.Println(string(input))
-
 	return input, nil
 	/*
 		// to test thread safety without mutexes

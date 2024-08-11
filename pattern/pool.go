@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -44,10 +43,10 @@ type internalOptions struct {
 	name string
 	// the error handler - what we want to do against errors within this worker pool?
 	errorHandler func(err error)
-	// fail fast? if true - will return on first error
-	failFast bool
 
 	end bool
+
+	buffer int
 }
 
 type Worker interface {
@@ -77,16 +76,24 @@ func WorkerCount(workers int) PoolOption {
 	}
 }
 
+// BufferSize is the size of the egress channels buffer
+func BufferSize(buffer int) PoolOption {
+	return func(opt *internalOptions) error {
+		opt.buffer = buffer
+		return nil
+	}
+}
+
 // NoOutput forces the workerpool to drain it's output channels automatically
 // i.e it doesn't have an egress
-func NoOutput() PoolOption {
+func Final() PoolOption {
 	return func(opt *internalOptions) error {
 		opt.end = true
 		return nil
 	}
 }
 
-// WorkerCount is how many workers are created
+// WorkerConfigBytes is whatever the config is needed for the worker to work
 func WorkerConfigBytes(workerConfig []byte) PoolOption {
 	return func(opt *internalOptions) error {
 		opt.configBytes = workerConfig
@@ -103,14 +110,6 @@ func WithWorker(worker Worker) PoolOption {
 
 		opt.worker = worker
 
-		return nil
-	}
-}
-
-// InitFunc is initialize for workerpool
-func FailFast() PoolOption {
-	return func(opt *internalOptions) error {
-		opt.failFast = true
 		return nil
 	}
 }
@@ -170,6 +169,10 @@ func (p *Pool) Name() string {
 	return p.options.name
 }
 
+func (p *Pool) BufferSize() int {
+	return p.options.buffer
+}
+
 func (p *Pool) Lock() {
 	p.mu.Lock()
 }
@@ -184,93 +187,65 @@ func (p *Pool) Start(inputChan <-chan []byte) {
 
 	wg := &sync.WaitGroup{}
 
-	workers := []Worker{}
-
 	for i := 0; i < p.options.workers; i++ {
-		clonedWorker := p.options.worker.Clone()
-
-		err := clonedWorker.Initialise(p.options.configBytes)
-		if err != nil {
-			p.options.errorHandler(fmt.Errorf("workerpool init error [%s]: %w", p.options.name, err))
-			continue
-		}
-
-		workers = append(workers, clonedWorker)
-
 		wg.Add(1)
 
 		go func() {
 			defer wg.Done()
-			for x := range inputChan {
-				select {
-				case <-p.ctx.Done():
-					log.Println("context cancelled - stopped worker immediately")
-					return
-				default:
-					// continue processing
-				}
-
-				result, err := clonedWorker.Action(x)
-				if err != nil {
-					p.options.errorHandler(fmt.Errorf("workerpool action error [%s]: %w", p.options.name, err))
-
-					atomic.AddUint64(p.fail, 1)
-
-					if p.options.failFast {
-						return
-					}
-				} else {
-					if !p.options.end {
-						for index := range p.Channels {
-							p.Channels[index] <- result
-						}
-					}
-
-					atomic.AddUint64(p.success, 1)
-				}
-
-				atomic.AddUint64(p.total, 1)
-			}
+			p.startWorker(inputChan)
 		}()
 	}
 
 	wg.Wait()
-
-	for index := range workers {
-		err := workers[index].Close()
-		if err != nil {
-			p.options.errorHandler(fmt.Errorf("workerpool close error [%s]: %w", p.options.name, err))
-		}
-	}
 
 	for index := range p.Channels {
 		close(p.Channels[index])
 	}
 }
 
-func (p *Pool) drainWorkerPool() {
-	poolChannels := p.GetOutputChannels() // rowLoggingPool
+func (p *Pool) startWorker(inputChan <-chan []byte) {
+	clonedWorker := p.options.worker.Clone()
 
-	wg := sync.WaitGroup{}
+	err := clonedWorker.Initialise(p.options.configBytes)
+	if err != nil {
+		p.options.errorHandler(fmt.Errorf("workerpool init error [%s]: %w", p.options.name, err))
+		return
+	}
 
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		for index := range poolChannels {
-			wg.Add(1)
-
-			go func() {
-				defer wg.Done()
-				for range poolChannels[index] {
-					// drain the channel
-				}
-			}()
+	defer func() {
+		err := clonedWorker.Close()
+		if err != nil {
+			p.options.errorHandler(fmt.Errorf("workerpool close error [%s]: %w", p.options.name, err))
 		}
 	}()
 
-	wg.Wait()
+	for x := range inputChan {
+		select {
+		case <-p.ctx.Done():
+			for range inputChan {
+				// drain and finish
+			}
 
-	log.Println("Gracefully stopped")
+			return
+		default:
+			// continue processing
+		}
+
+		result, err := clonedWorker.Action(x)
+		if err != nil {
+			p.options.errorHandler(fmt.Errorf("workerpool action error [%s]: %w", p.options.name, err))
+
+			atomic.AddUint64(p.fail, 1)
+		} else {
+			if !p.options.end {
+				for index := range p.Channels {
+					p.Channels[index] <- result
+				}
+			}
+
+			atomic.AddUint64(p.success, 1)
+		}
+
+		atomic.AddUint64(p.total, 1)
+	}
 }

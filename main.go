@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/tbal999/pipelines/pattern"
@@ -32,6 +31,7 @@ func main() {
 	rowLoggingPool2, err := pattern.NewPool(ctx,
 		pattern.Name("csv row logging workerpool"),
 		pattern.WorkerCount(100),
+		pattern.NoOutput(),
 		pattern.WithWorker(&workers.RowLogger{}),
 		pattern.ErrorHandler(func(err error) {
 			log.Println(err.Error())
@@ -61,8 +61,6 @@ func main() {
 
 	workerPipeline.Start(inputChan)
 
-	drainWorkerPool(rowLoggingPool2)
-
 	time.Sleep(2 * time.Second)
 
 	workerPipeline.Initialise()
@@ -73,33 +71,4 @@ func main() {
 	}
 
 	workerPipeline.Start(inputChan2)
-
-	drainWorkerPool(rowLoggingPool2)
-}
-
-func drainWorkerPool(workerPool *pattern.Pool) {
-	poolChannels, _ := workerPool.GetOutputChannels(), workerPool.Name() // rowLoggingPool
-
-	wg := sync.WaitGroup{}
-
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		for index := range poolChannels {
-			wg.Add(1)
-
-			go func() {
-				defer wg.Done()
-				for range poolChannels[index] {
-					// drain the channel
-				}
-			}()
-		}
-	}()
-
-	wg.Wait()
-
-	log.Println("Gracefully stopped")
 }

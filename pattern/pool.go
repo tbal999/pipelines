@@ -46,6 +46,8 @@ type internalOptions struct {
 	errorHandler func(err error)
 	// fail fast? if true - will return on first error
 	failFast bool
+
+	end bool
 }
 
 type Worker interface {
@@ -71,6 +73,15 @@ func Name(name string) PoolOption {
 func WorkerCount(workers int) PoolOption {
 	return func(opt *internalOptions) error {
 		opt.workers = workers
+		return nil
+	}
+}
+
+// NoOutput forces the workerpool to drain it's output channels automatically
+// i.e it doesn't have an egress
+func NoOutput() PoolOption {
+	return func(opt *internalOptions) error {
+		opt.end = true
 		return nil
 	}
 }
@@ -209,8 +220,10 @@ func (p *Pool) Start(inputChan <-chan []byte) {
 						return
 					}
 				} else {
-					for index := range p.Channels {
-						p.Channels[index] <- result
+					if !p.options.end {
+						for index := range p.Channels {
+							p.Channels[index] <- result
+						}
 					}
 
 					atomic.AddUint64(p.success, 1)
@@ -233,4 +246,31 @@ func (p *Pool) Start(inputChan <-chan []byte) {
 	for index := range p.Channels {
 		close(p.Channels[index])
 	}
+}
+
+func (p *Pool) drainWorkerPool() {
+	poolChannels := p.GetOutputChannels() // rowLoggingPool
+
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		for index := range poolChannels {
+			wg.Add(1)
+
+			go func() {
+				defer wg.Done()
+				for range poolChannels[index] {
+					// drain the channel
+				}
+			}()
+		}
+	}()
+
+	wg.Wait()
+
+	log.Println("Gracefully stopped")
 }

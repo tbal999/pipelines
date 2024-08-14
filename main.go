@@ -13,7 +13,7 @@ import (
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer func() {
-		time.Sleep(300 * time.Second)
+		time.Sleep(3 * time.Second)
 		cancel()
 	}()
 
@@ -63,7 +63,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	inputBytes := readers.HTTPEvents()
+	mappingWorkerPool4, err := pattern.NewPool(ctx,
+		pattern.Name("mapper workerpool 4"),
+		pattern.WorkerCount(6),
+		pattern.BufferSize(1),
+		pattern.Final(),
+		pattern.WithWorker(&workers.Mapper{Log: true}),
+		pattern.WorkerConfigBytes([]byte(`$$[0].Name`)),
+		pattern.ErrorHandler(func(err error) {
+			log.Println(err.Error())
+			//cancel()
+		}),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	inputBytes := readers.HTTPEvents(ctx)
 
 	// a tree of worker pools that form a pipeline
 	workerPipeline := pattern.PoolTree{
@@ -74,6 +90,9 @@ func main() {
 				Children: []pattern.PoolTree{
 					{
 						WorkerPool: mappingWorkerPool3,
+					},
+					{
+						WorkerPool: mappingWorkerPool4,
 					},
 				},
 			},

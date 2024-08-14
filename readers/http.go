@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
 )
 
 func HTTPEvents(ctx context.Context) <-chan []byte {
@@ -30,9 +31,11 @@ func HTTPEvents(ctx context.Context) <-chan []byte {
 	})
 
 	go func() {
-		go func() {
-			defer close(bodyChannel)
+		defer func() {
+			close(bodyChannel)
+		}()
 
+		go func() {
 			// Start the HTTP server
 			log.Println("Starting server on :8080")
 			if err := http.ListenAndServe(":8080", nil); err != nil {
@@ -40,9 +43,15 @@ func HTTPEvents(ctx context.Context) <-chan []byte {
 			}
 		}()
 
-		<-ctx.Done()
-		
-		log.Println("context cancelled")
+		for {
+			time.Sleep(1 * time.Second)
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				//
+			}
+		}
 	}()
 
 	return bodyChannel

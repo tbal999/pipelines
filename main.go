@@ -12,8 +12,8 @@ import (
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer func() {
-		time.Sleep(3 * time.Second)
+	go func() {
+		time.Sleep(5 * time.Second)
 		cancel()
 	}()
 

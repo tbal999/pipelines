@@ -19,13 +19,12 @@ func main() {
 
 	mappingWorkerPool, err := pattern.NewPool(ctx,
 		pattern.Name("mapper workerpool 1"),
-		pattern.WorkerCount(1),
-		pattern.BufferSize(1),
+		pattern.WorkerCount(4),
+		pattern.BufferSize(1000),
 		pattern.WithWorker(&workers.Mapper{Log: true}),
 		pattern.WorkerConfigBytes([]byte("$$")),
 		pattern.ErrorHandler(func(err error) {
 			log.Println(err.Error())
-			//cancel()
 		}),
 	)
 	if err != nil {
@@ -34,13 +33,12 @@ func main() {
 
 	mappingWorkerPool2, err := pattern.NewPool(ctx,
 		pattern.Name("mapper workerpool 2"),
-		pattern.WorkerCount(1),
-		pattern.BufferSize(1),
+		pattern.WorkerCount(4),
+		pattern.BufferSize(1000),
 		pattern.WithWorker(&workers.Mapper{Log: true}),
 		pattern.WorkerConfigBytes([]byte("[$$]")),
 		pattern.ErrorHandler(func(err error) {
 			log.Println(err.Error())
-			//cancel()
 		}),
 	)
 	if err != nil {
@@ -49,14 +47,13 @@ func main() {
 
 	mappingWorkerPool3, err := pattern.NewPool(ctx,
 		pattern.Name("mapper workerpool 3"),
-		pattern.WorkerCount(6),
-		pattern.BufferSize(1),
+		pattern.WorkerCount(4),
+		pattern.BufferSize(1000),
 		pattern.Final(),
 		pattern.WithWorker(&workers.Mapper{Log: true}),
-		pattern.WorkerConfigBytes([]byte(`$$[0].Name`)),
+		pattern.WorkerConfigBytes([]byte(`$$[0].event`)),
 		pattern.ErrorHandler(func(err error) {
 			log.Println(err.Error())
-			//cancel()
 		}),
 	)
 	if err != nil {
@@ -65,21 +62,20 @@ func main() {
 
 	mappingWorkerPool4, err := pattern.NewPool(ctx,
 		pattern.Name("mapper workerpool 4"),
-		pattern.WorkerCount(6),
-		pattern.BufferSize(1),
+		pattern.WorkerCount(4),
+		pattern.BufferSize(1000),
 		pattern.Final(),
 		pattern.WithWorker(&workers.Mapper{Log: true}),
-		pattern.WorkerConfigBytes([]byte(`$$[0].Name`)),
+		pattern.WorkerConfigBytes([]byte(`$$[0].event`)),
 		pattern.ErrorHandler(func(err error) {
 			log.Println(err.Error())
-			//cancel()
 		}),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	inputBytes := readers.HTTPEvents(ctx)
+	inputBytes := readers.SendEvents(ctx, 50000)
 
 	// a tree of worker pools that form a pipeline
 	workerPipeline := pattern.PoolTree{

@@ -6,20 +6,20 @@ import "sync"
 // that feed downwards to form a pipeline
 type PoolTree struct {
 	WorkerPool *Pool
-	Children   []PoolTree
+	PublishTo []PoolTree
+	readychan chan bool
+}
+
+func (workerPools *PoolTree) Ready() {
+	<-workerPools.readychan
 }
 
 func (workerPools *PoolTree) initialise() {
 	workerPools.WorkerPool.Lock()
+	workerPools.readychan = make(chan bool, 1)
 	defer workerPools.WorkerPool.Unlock()
 
-	numChannels := len(workerPools.Children)
-
-	if numChannels == 0 {
-		// there will always be at least one output channel
-		// to enable bespoke handling at egress (if needed)
-		numChannels = 1
-	}
+	numChannels := len(workerPools.PublishTo)
 
 	workerPools.WorkerPool.Channels = make([]chan []byte, numChannels)
 
@@ -31,13 +31,17 @@ func (workerPools *PoolTree) initialise() {
 		}
 	}
 
-	for index := range workerPools.Children {
-		workerPools.Children[index].initialise()
+	for index := range workerPools.PublishTo {
+		workerPools.PublishTo[index].initialise()
 	}
 }
 
-func (workerPools *PoolTree) Start(inputChan <-chan []byte) {
+func (workerPools *PoolTree) Init() {
 	workerPools.initialise()
+}
+
+func (workerPools *PoolTree) Start(inputChan <-chan []byte) {
+	workerPools.readychan <- true
 
 	wg := &sync.WaitGroup{}
 
@@ -49,12 +53,12 @@ func (workerPools *PoolTree) Start(inputChan <-chan []byte) {
 			workerPools.WorkerPool.Start(inputChan)
 		}()
 
-		for index := range workerPools.Children {
+		for index := range workerPools.PublishTo {
 			wg.Add(1)
 
 			go func() {
 				defer wg.Done()
-				workerPools.Children[index].Start(workerPools.WorkerPool.Channels[index])
+				workerPools.PublishTo[index].Start(workerPools.WorkerPool.Channels[index])
 			}()
 		}
 	}

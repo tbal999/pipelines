@@ -19,8 +19,8 @@ func main() {
 
 	mappingWorkerPool, err := pattern.NewPool(ctx,
 		pattern.Name("mapper workerpool 1"),
-		pattern.WorkerCount(4),
-		pattern.BufferSize(1000),
+		pattern.WorkerCount(2),
+		pattern.BufferSize(4),
 		pattern.WithWorker(&workers.Mapper{Log: true}),
 		pattern.WorkerConfigBytes([]byte("$$")),
 		pattern.ErrorHandler(func(err error) {
@@ -33,8 +33,8 @@ func main() {
 
 	mappingWorkerPool2, err := pattern.NewPool(ctx,
 		pattern.Name("mapper workerpool 2"),
-		pattern.WorkerCount(4),
-		pattern.BufferSize(1000),
+		pattern.WorkerCount(2),
+		pattern.BufferSize(4),
 		pattern.WithWorker(&workers.Mapper{Log: true}),
 		pattern.WorkerConfigBytes([]byte("[$$]")),
 		pattern.ErrorHandler(func(err error) {
@@ -47,8 +47,8 @@ func main() {
 
 	mappingWorkerPool3, err := pattern.NewPool(ctx,
 		pattern.Name("mapper workerpool 3"),
-		pattern.WorkerCount(4),
-		pattern.BufferSize(1000),
+		pattern.WorkerCount(2),
+		pattern.BufferSize(4),
 		pattern.Final(),
 		pattern.WithWorker(&workers.Mapper{Log: true}),
 		pattern.WorkerConfigBytes([]byte(`$$[0].event`)),
@@ -62,8 +62,8 @@ func main() {
 
 	mappingWorkerPool4, err := pattern.NewPool(ctx,
 		pattern.Name("mapper workerpool 4"),
-		pattern.WorkerCount(4),
-		pattern.BufferSize(1000),
+		pattern.WorkerCount(2),
+		pattern.BufferSize(4),
 		pattern.Final(),
 		pattern.WithWorker(&workers.Mapper{Log: true}),
 		pattern.WorkerConfigBytes([]byte(`$$[0].event`)),
@@ -75,15 +75,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	inputBytes := readers.SendEvents(ctx, 50000)
+	inputBytes := readers.SendEvents(ctx, 500000)
 
 	// a tree of worker pools that form a pipeline
+	// 1 sends to 2 
+	// 2 sends to 3 and 4
 	workerPipeline := pattern.PoolTree{
 		WorkerPool: mappingWorkerPool,
-		Children: []pattern.PoolTree{
+		PublishTo: []pattern.PoolTree{
 			{
 				WorkerPool: mappingWorkerPool2,
-				Children: []pattern.PoolTree{
+				PublishTo: []pattern.PoolTree{
 					{
 						WorkerPool: mappingWorkerPool3,
 					},
@@ -94,6 +96,8 @@ func main() {
 			},
 		},
 	}
+
+	workerPipeline.Init()
 
 	workerPipeline.Start(inputBytes)
 }

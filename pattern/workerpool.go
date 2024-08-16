@@ -49,13 +49,6 @@ type internalOptions struct {
 	buffer int
 }
 
-type Worker interface {
-	Action(input []byte) ([]byte, error)
-	Initialise(configBytes []byte) error
-	Close() error
-	Clone() Worker
-}
-
 // Name of the Pool
 func Name(name string) PoolOption {
 	return func(opt *internalOptions) error {

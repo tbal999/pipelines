@@ -1,22 +1,22 @@
 package pattern
 
-import "sync"
+import (
+	"sync"
+)
 
 // PoolTree structure is a tree of workerpools
 // that feed downwards to form a pipeline
 type PoolTree struct {
 	WorkerPool *Pool
-	PublishTo []PoolTree
-	readychan chan bool
-}
-
-func (workerPools *PoolTree) Ready() {
-	<-workerPools.readychan
+	PublishTo  []PoolTree
 }
 
 func (workerPools *PoolTree) initialise() {
+	if workerPools.WorkerPool == nil {
+		return
+	}
+
 	workerPools.WorkerPool.Lock()
-	workerPools.readychan = make(chan bool, 1)
 	defer workerPools.WorkerPool.Unlock()
 
 	numChannels := len(workerPools.PublishTo)
@@ -36,12 +36,8 @@ func (workerPools *PoolTree) initialise() {
 	}
 }
 
-func (workerPools *PoolTree) Init() {
+func (workerPools *PoolTree) Start(inputChan <-chan []byte) error {
 	workerPools.initialise()
-}
-
-func (workerPools *PoolTree) Start(inputChan <-chan []byte) {
-	workerPools.readychan <- true
 
 	wg := &sync.WaitGroup{}
 
@@ -61,7 +57,9 @@ func (workerPools *PoolTree) Start(inputChan <-chan []byte) {
 				workerPools.PublishTo[index].Start(workerPools.WorkerPool.Channels[index])
 			}()
 		}
+
+		wg.Wait()
 	}
 
-	wg.Wait()
+	return nil
 }

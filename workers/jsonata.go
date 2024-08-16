@@ -30,7 +30,7 @@ func (w *Mapper) Initialise(configBytes []byte) error {
 	if cachedParser, ok := cache.Load(string(configBytes)); ok {
 		w.parser, ok = cachedParser.(*jsonata.Expr)
 		if !ok {
-			return fmt.Errorf("%w : %s is not a valid jsonata expression", "not valid", string(configBytes))
+			return fmt.Errorf("%s : %s is not a valid jsonata expression", "not valid", string(configBytes))
 		}
 
 		return nil

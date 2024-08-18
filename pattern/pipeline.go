@@ -36,7 +36,7 @@ func (workerPools *PoolTree) initialise() {
 	}
 }
 
-func (workerPools *PoolTree) Start(inputChan <-chan []byte) error {
+func (workerPools *PoolTree) Start(inputChan <-chan []byte) {
 	workerPools.initialise()
 
 	wg := &sync.WaitGroup{}
@@ -60,6 +60,4 @@ func (workerPools *PoolTree) Start(inputChan <-chan []byte) error {
 
 		wg.Wait()
 	}
-
-	return nil
 }

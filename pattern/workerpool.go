@@ -35,8 +35,6 @@ type internalOptions struct {
 	worker Worker
 	// the config bytes used by the worker
 	configBytes []byte
-	// should we clone the worker object per worker?
-	clone bool
 	// how many workers do we want in the workerpool?
 	workers int
 	// the name of the workerpool

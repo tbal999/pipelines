@@ -52,15 +52,15 @@ case "$1" in
 
 "test")
   mkdir -p tmp
-  go test $(go list ./... | grep -v /testing/) -race -failfast -cover -coverprofile=coverage.out ./...
+  go test $(go list ./... | grep -v /testing/) -race -failfast -cover -coverprofile=./tmp/coverage.out ./... -v
   test_exit_code=$?
   if [ $test_exit_code -ne 0 ]; then
     echo "Tests failed."
     exit 1
   fi
-  cat coverage.out | grep -v "/mocks" | grep -v "/cmd" | grep -v "/testing" > coverage.redacted.out
-  go tool cover -func coverage.redacted.out
-  echo "Current test coverage at $(go tool cover -func coverage.redacted.out | tail -n 1 | awk '{print $3}' | cut -d "." -f 1) %"
+  cat ./tmp/coverage.out | grep -v "/mocks" > ./tmp/coverage.redacted.out
+  go tool cover -func ./tmp/coverage.redacted.out
+  echo "Current test coverage at $(go tool cover -func ./tmp/coverage.redacted.out | tail -n 1 | awk '{print $3}' | cut -d "." -f 1) %"
   ;;
 
 "benchmark")

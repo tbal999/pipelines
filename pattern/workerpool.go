@@ -180,7 +180,7 @@ func (p *Pool) Start(inputChan <-chan []byte) {
 
 	wg := &sync.WaitGroup{}
 
-	for i := 0; i <= p.options.workers; i++ {
+	for i := 0; i < p.options.workers; i++ {
 		wg.Add(1)
 
 		go func() {

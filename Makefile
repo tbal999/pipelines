@@ -30,7 +30,7 @@ tag: ## Create a Git tag from the branch name
 	@scripts/tools.sh tag
 
 test: generate ## Run all tests
-	@scripts/tools.sh test
+	@scripts/tools.sh test && scripts/tools.sh cleanup
 
 test-benchmark: ## Run all benchmark tests
 	@scripts/tools.sh benchmark

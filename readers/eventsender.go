@@ -12,7 +12,7 @@ func SendEvents(ctx context.Context, howMany int) <-chan []byte {
 	go func() {
 		defer close(rowChan)
 
-		for i := 0; i <= howMany; i++ {
+		for i := 0; i < howMany; i++ {
 			select {
 			case <-ctx.Done():
 				return

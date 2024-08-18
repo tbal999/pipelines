@@ -52,10 +52,10 @@ func (workerPools *PoolTree) Start(inputChan <-chan []byte) {
 		for index := range workerPools.PublishTo {
 			wg.Add(1)
 
-			go func() {
+			go func(i int) {
 				defer wg.Done()
-				workerPools.PublishTo[index].Start(workerPools.WorkerPool.Channels[index])
-			}()
+				workerPools.PublishTo[i].Start(workerPools.WorkerPool.Channels[i])
+			}(index)
 		}
 
 		wg.Wait()

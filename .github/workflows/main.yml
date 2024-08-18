@@ -6,29 +6,24 @@ on:
 
 name: test/lint
 jobs:
-  test:
-    name: Unit Tests
-    runs-on: ubuntu-latest
+  testing:
+    strategy:
+      matrix:
+        go-version: [1.20.x, 1.21.x] # TODO bump after lint, 1.22.x]
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    name: Build and Test
+    if: github.event.pull_request.draft == false
     steps:
+      - uses: actions/checkout@v3
+
       - name: Install Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: 1.20
+          go-version: ${{ matrix.go-version }}
 
-      - name: Checkout code
-        uses: actions/checkout@v2
-
-      - name: Unit tests
+      - name: Test
         run: make test
 
-  lint:
-    name: Lint code
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code 
-        uses: actions/checkout@v2
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v2
-        with:
-          version: v1.50.1
+      - name: Lint
+        run: make fmt

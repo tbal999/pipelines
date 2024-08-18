@@ -1,0 +1,106 @@
+version: '3'
+
+# Variables
+vars:
+  mockgen_version:
+    default: "latest"
+  golangci_lint_version:
+    default: "v1.54.2"
+  goimports_version:
+    default: "latest"
+  gofumpt_version:
+    default: "latest"
+  kind_version:
+    default: "latest"
+
+# Tasks
+tasks:
+  install:
+    desc: "Install necessary tools"
+    cmds:
+      - | 
+        if ! command -v mockgen &>/dev/null; then
+          go install go.uber.org/mock/mockgen@{{.mockgen_version}}
+        fi
+      - |
+        if ! command -v golangci-lint &>/dev/null; then
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@{{.golangci_lint_version}}
+        fi
+      - |
+        if ! command -v goimports &>/dev/null; then
+          go install golang.org/x/tools/cmd/goimports@{{.goimports_version}}
+        fi
+      - |
+        if ! command -v gofumpt &>/dev/null; then
+          go install mvdan.cc/gofumpt@{{.gofumpt_version}}
+        fi
+      - |
+        if ! command -v kind &>/dev/null; then
+          go install sigs.k8s.io/kind@{{.kind_version}}
+        fi
+
+  cleanup:
+    desc: "Clean up temporary files"
+    cmds:
+      - rm -Rf tmp var .ssh
+
+  fmt:
+    desc: "Format and tidy up Go code"
+    cmds:
+      - gofumpt -l -w .
+      - go mod tidy -v
+      - goimports -w .
+      - golangci-lint run --fix
+
+  generate:
+    desc: "Run Go generate"
+    cmds:
+      - go generate -v ./...
+
+  update:
+    desc: "Update Go dependencies"
+    cmds:
+      - go get -u ./...
+
+  statan:
+    desc: "Run static analysis"
+    cmds:
+      - golangci-lint run
+
+  tag:
+    desc: "Tag the current Git branch"
+    cmds:
+      - branch="$(git rev-parse --abbrev-ref HEAD)"
+      - hash="$(git rev-parse --short HEAD)"
+      - tag="$branch-$hash"
+      - echo "Creating tag $tag"
+      - git tag "$tag"
+      - git push origin "$tag"
+
+  test:
+    desc: "Run Go tests with coverage"
+    cmds:
+      - mkdir -p tmp
+      - go test $(go list ./... | grep -v /testing/) -race -failfast -cover -coverprofile=./tmp/coverage.out ./... -v
+      - |
+        test_exit_code=$?
+        if [ $test_exit_code -ne 0 ]; then
+          echo "Tests failed."
+          exit 1
+        fi
+      - cat ./tmp/coverage.out | grep -v "/mocks" > ./tmp/coverage.redacted.out
+      - go tool cover -func ./tmp/coverage.redacted.out
+      - echo "Current test coverage at $(go tool cover -func ./tmp/coverage.redacted.out | tail -n 1 | awk '{print $3}' | cut -d '.' -f 1) %"
+
+  benchmark:
+    desc: "Run Go benchmarks"
+    cmds:
+      - go test -bench=. ./...
+
+  version:
+    desc: "Show the latest Git tag"
+    cmds:
+      - git describe --tags "$(git rev-list --tags --max-count=1)"
+
+default: "version"
+

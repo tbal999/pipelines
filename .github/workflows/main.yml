@@ -22,8 +22,12 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Install Taskfile
+        run: |
+          sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
+
       - name: Test
-        run: make test
+        run: task test
 
       - name: Lint
-        run: make fmt
+        run: task fmt

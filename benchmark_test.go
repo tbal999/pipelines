@@ -40,4 +40,4 @@ func BenchmarkPipeline(b *testing.B) {
 	}
 }
 
-/* 500000 events in 0.425 seconds */ 
+/* 500000 events in 0.425 seconds i.e 1 million events a second roughly */ 

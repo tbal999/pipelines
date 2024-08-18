@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tbal999/pipelines/pattern"
-	"github.com/tbal999/pipelines/pattern/mocks"
+	pipelines "github.com/tbal999/pipelines/pkg"
+	"github.com/tbal999/pipelines/pkg/mocks"
 	"github.com/tbal999/pipelines/readers"
 	"github.com/tbal999/pipelines/workers"
 
@@ -22,13 +22,13 @@ func TestRun(t *testing.T) {
 			cancel()
 		}()
 
-		mappingWorkerPool, err := pattern.NewPool(ctx,
-			pattern.Name("mapper workerpool 1"),
-			pattern.WorkerCount(2),
-			pattern.BufferSize(4),
-			pattern.WithWorker(&workers.Mapper{Log: true}),
-			pattern.WorkerConfigBytes([]byte(``)),
-			pattern.ErrorHandler(func(err error) {
+		mappingWorkerPool, err := pipelines.NewPool(ctx,
+			pipelines.Name("mapper workerpool 1"),
+			pipelines.WorkerCount(2),
+			pipelines.BufferSize(4),
+			pipelines.WithWorker(&workers.Mapper{Log: true}),
+			pipelines.WorkerConfigBytes([]byte(``)),
+			pipelines.ErrorHandler(func(err error) {
 				log.Println(err.Error())
 			}),
 		)
@@ -36,13 +36,13 @@ func TestRun(t *testing.T) {
 			log.Fatal(err)
 		}
 
-		mappingWorkerPool2, err := pattern.NewPool(ctx,
-			pattern.Name("mapper workerpool 2"),
-			pattern.WorkerCount(2),
-			pattern.BufferSize(4),
-			pattern.WithWorker(&workers.Mapper{Log: true}),
-			pattern.WorkerConfigBytes([]byte(``)),
-			pattern.ErrorHandler(func(err error) {
+		mappingWorkerPool2, err := pipelines.NewPool(ctx,
+			pipelines.Name("mapper workerpool 2"),
+			pipelines.WorkerCount(2),
+			pipelines.BufferSize(4),
+			pipelines.WithWorker(&workers.Mapper{Log: true}),
+			pipelines.WorkerConfigBytes([]byte(``)),
+			pipelines.ErrorHandler(func(err error) {
 				log.Println(err.Error())
 			}),
 		)
@@ -50,14 +50,14 @@ func TestRun(t *testing.T) {
 			log.Fatal(err)
 		}
 
-		mappingWorkerPool3, err := pattern.NewPool(ctx,
-			pattern.Name("mapper workerpool 3"),
-			pattern.WorkerCount(2),
-			pattern.BufferSize(4),
-			pattern.Final(),
-			pattern.WithWorker(&workers.Mapper{Log: true}),
-			pattern.WorkerConfigBytes([]byte(``)),
-			pattern.ErrorHandler(func(err error) {
+		mappingWorkerPool3, err := pipelines.NewPool(ctx,
+			pipelines.Name("mapper workerpool 3"),
+			pipelines.WorkerCount(2),
+			pipelines.BufferSize(4),
+			pipelines.Final(),
+			pipelines.WithWorker(&workers.Mapper{Log: true}),
+			pipelines.WorkerConfigBytes([]byte(``)),
+			pipelines.ErrorHandler(func(err error) {
 				log.Println(err.Error())
 			}),
 		)
@@ -68,14 +68,14 @@ func TestRun(t *testing.T) {
 		// a tree of worker pools that form a pipeline
 		// 1 sends to 2
 		// 2 sends to 3
-		workerPipeline := pattern.PoolTree{
+		workerPipeline := pipelines.PoolTree{
 			// Converts the input from Reader into JSON
 			WorkerPool: mappingWorkerPool,
-			PublishTo: []pattern.PoolTree{
+			PublishTo: []pipelines.PoolTree{
 				{
 					// Maps the JSON data using JSONATA
 					WorkerPool: mappingWorkerPool2,
-					PublishTo: []pattern.PoolTree{
+					PublishTo: []pipelines.PoolTree{
 						{
 							// Publishes the mapped data to an egress
 							WorkerPool: mappingWorkerPool3,
@@ -104,14 +104,14 @@ func TestRun(t *testing.T) {
 
 		mockWorker := mocks.NewMockWorker(ctrl)
 
-		mockworkerPool, err := pattern.NewPool(ctx,
-			pattern.Name("mock worker"),
-			pattern.WorkerCount(2),
-			pattern.BufferSize(4),
-			pattern.Final(),
-			pattern.WithWorker(mockWorker),
-			pattern.WorkerConfigBytes([]byte(``)),
-			pattern.ErrorHandler(func(err error) {
+		mockworkerPool, err := pipelines.NewPool(ctx,
+			pipelines.Name("mock worker"),
+			pipelines.WorkerCount(2),
+			pipelines.BufferSize(4),
+			pipelines.Final(),
+			pipelines.WithWorker(mockWorker),
+			pipelines.WorkerConfigBytes([]byte(``)),
+			pipelines.ErrorHandler(func(err error) {
 				log.Println(err.Error())
 			}),
 		)
@@ -120,7 +120,7 @@ func TestRun(t *testing.T) {
 		}
 
 		// a tree of worker pools that form a pipeline
-		workerPipeline := pattern.PoolTree{
+		workerPipeline := pipelines.PoolTree{
 			WorkerPool: mockworkerPool,
 		}
 

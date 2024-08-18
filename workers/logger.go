@@ -3,7 +3,7 @@ package workers
 import (
 	"log"
 
-	pipeline "github.com/tbal999/pipelines/pattern"
+	pipeline "github.com/tbal999/pipelines/pkg"
 )
 
 type Mapper struct {

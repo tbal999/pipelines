@@ -6,7 +6,6 @@ vars:
   golangci_lint_version: "v1.54.2"
   goimports_version: "latest"
   gofumpt_version: "latest"
-  kind_version: "latest"
 
 # Tasks
 tasks:
@@ -28,10 +27,6 @@ tasks:
       - |
         if ! command -v gofumpt &>/dev/null; then
           go install mvdan.cc/gofumpt@{{.gofumpt_version}}
-        fi
-      - |
-        if ! command -v kind &>/dev/null; then
-          go install sigs.k8s.io/kind@{{.kind_version}}
         fi
 
   cleanup:

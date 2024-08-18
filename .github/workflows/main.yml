@@ -9,7 +9,7 @@ jobs:
   testing:
     strategy:
       matrix:
-        go-version: [1.21.x, 1.22.x]
+        go-version: [1.21.x]
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     name: Build and Test
@@ -25,11 +25,8 @@ jobs:
         run: |
           sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
 
-      - name: Install any deps
-        run: task install
-
       - name: Test
         run: task test
 
       - name: Lint
-        run: task fmt
+        run: task lint

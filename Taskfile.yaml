@@ -2,16 +2,11 @@ version: '3'
 
 # Variables
 vars:
-  mockgen_version:
-    default: "latest"
-  golangci_lint_version:
-    default: "v1.54.2"
-  goimports_version:
-    default: "latest"
-  gofumpt_version:
-    default: "latest"
-  kind_version:
-    default: "latest"
+  mockgen_version: "latest"
+  golangci_lint_version: "v1.54.2"
+  goimports_version: "latest"
+  gofumpt_version: "latest"
+  kind_version: "latest"
 
 # Tasks
 tasks:

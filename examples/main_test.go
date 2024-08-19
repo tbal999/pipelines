@@ -8,8 +8,8 @@ import (
 
 	pipelines "github.com/tbal999/pipelines/pkg"
 	"github.com/tbal999/pipelines/pkg/mocks"
-	"github.com/tbal999/pipelines/readers"
-	"github.com/tbal999/pipelines/workers"
+	"github.com/tbal999/pipelines/examples/readers"
+	"github.com/tbal999/pipelines/examples/workers"
 
 	"go.uber.org/mock/gomock"
 )

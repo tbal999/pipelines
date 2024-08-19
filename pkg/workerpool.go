@@ -222,13 +222,13 @@ func (p *Pool) startWorker(inputChan <-chan []byte) {
 			// continue processing
 		}
 
-		result, err := clonedWorker.Action(x)
+		result, send, err := clonedWorker.Action(x)
 		if err != nil {
 			p.options.errorHandler(fmt.Errorf("workerpool action error [%s]: %w", p.options.name, err))
 
 			atomic.AddUint64(p.fail, 1)
 		} else {
-			if !p.options.end {
+			if !p.options.end && send {
 				for index := range p.Channels {
 					p.Channels[index] <- result
 				}

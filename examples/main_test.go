@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	pipelines "github.com/tbal999/pipelines/pkg"
-	"github.com/tbal999/pipelines/pkg/mocks"
 	"github.com/tbal999/pipelines/examples/readers"
 	"github.com/tbal999/pipelines/examples/workers"
+	pipelines "github.com/tbal999/pipelines/pkg"
+	"github.com/tbal999/pipelines/pkg/mocks"
 
 	"go.uber.org/mock/gomock"
 )
@@ -23,10 +23,10 @@ func TestRun(t *testing.T) {
 		}()
 
 		mappingWorkerPool, err := pipelines.NewPool(ctx,
-			pipelines.Name("mapper workerpool 1"),
+			pipelines.Name("logger workerpool 1"),
 			pipelines.WorkerCount(2),
 			pipelines.BufferSize(4),
-			pipelines.WithWorker(&workers.Mapper{Log: true}),
+			pipelines.WithWorker(&workers.Logger{Log: true}),
 			pipelines.WorkerConfigBytes([]byte(``)),
 			pipelines.ErrorHandler(func(err error) {
 				log.Println(err.Error())
@@ -37,10 +37,10 @@ func TestRun(t *testing.T) {
 		}
 
 		mappingWorkerPool2, err := pipelines.NewPool(ctx,
-			pipelines.Name("mapper workerpool 2"),
+			pipelines.Name("logger workerpool 2"),
 			pipelines.WorkerCount(2),
 			pipelines.BufferSize(4),
-			pipelines.WithWorker(&workers.Mapper{Log: true}),
+			pipelines.WithWorker(&workers.Logger{Log: true}),
 			pipelines.WorkerConfigBytes([]byte(``)),
 			pipelines.ErrorHandler(func(err error) {
 				log.Println(err.Error())
@@ -51,11 +51,11 @@ func TestRun(t *testing.T) {
 		}
 
 		mappingWorkerPool3, err := pipelines.NewPool(ctx,
-			pipelines.Name("mapper workerpool 3"),
+			pipelines.Name("logger workerpool 3"),
 			pipelines.WorkerCount(2),
 			pipelines.BufferSize(4),
 			pipelines.Final(),
-			pipelines.WithWorker(&workers.Mapper{Log: true}),
+			pipelines.WithWorker(&workers.Logger{Log: true}),
 			pipelines.WorkerConfigBytes([]byte(``)),
 			pipelines.ErrorHandler(func(err error) {
 				log.Println(err.Error())
@@ -125,7 +125,7 @@ func TestRun(t *testing.T) {
 		}
 
 		mockWorker.EXPECT().Close().Return(nil).Times(2)
-		mockWorker.EXPECT().Action(gomock.Any()).Return(nil, nil).Times(20)
+		mockWorker.EXPECT().Action(gomock.Any()).Return(nil, true, nil).Times(20)
 		mockWorker.EXPECT().Initialise(gomock.Any()).Return(nil).Times(2)
 		mockWorker.EXPECT().Clone().Return(mockWorker).Times(2)
 

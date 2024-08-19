@@ -4,18 +4,18 @@ import (
 	"context"
 	"testing"
 
-	pipelines "github.com/tbal999/pipelines/pkg"
 	"github.com/tbal999/pipelines/examples/readers"
 	"github.com/tbal999/pipelines/examples/workers"
+	pipelines "github.com/tbal999/pipelines/pkg"
 )
 
 func BenchmarkPipeline(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool1, _ := pipelines.NewPool(ctx, pipelines.Name("Stage 1"), pipelines.WorkerCount(2), pipelines.BufferSize(4), pipelines.WithWorker(&workers.Mapper{Log: false}))
-	pool2, _ := pipelines.NewPool(ctx, pipelines.Name("Stage 2"), pipelines.WorkerCount(2), pipelines.BufferSize(4), pipelines.WithWorker(&workers.Mapper{Log: false}))
-	pool3, _ := pipelines.NewPool(ctx, pipelines.Name("Stage 3"), pipelines.WorkerCount(2), pipelines.BufferSize(4), pipelines.WithWorker(&workers.Mapper{Log: false}), pipelines.Final())
+	pool1, _ := pipelines.NewPool(ctx, pipelines.Name("Stage 1"), pipelines.WorkerCount(2), pipelines.BufferSize(4), pipelines.WithWorker(&workers.Logger{Log: false}))
+	pool2, _ := pipelines.NewPool(ctx, pipelines.Name("Stage 2"), pipelines.WorkerCount(2), pipelines.BufferSize(4), pipelines.WithWorker(&workers.Logger{Log: false}))
+	pool3, _ := pipelines.NewPool(ctx, pipelines.Name("Stage 3"), pipelines.WorkerCount(2), pipelines.BufferSize(4), pipelines.WithWorker(&workers.Logger{Log: false}), pipelines.Final())
 
 	pipeline := pipelines.PoolTree{
 		WorkerPool: pool1,
@@ -40,4 +40,4 @@ func BenchmarkPipeline(b *testing.B) {
 	}
 }
 
-/* 500000 events in 0.425 seconds i.e 1 million events a second roughly */ 
+/* 500000 events in 0.425 seconds i.e 1 million events a second roughly */

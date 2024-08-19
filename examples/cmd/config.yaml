@@ -1,0 +1,4 @@
+deduper:
+  sourcefolder: "./output"
+logger:
+  log: true

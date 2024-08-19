@@ -199,14 +199,14 @@ func (p *Pool) startWorker(inputChan <-chan []byte) {
 
 	err := clonedWorker.Initialise(p.options.configBytes)
 	if err != nil {
-		p.options.errorHandler(fmt.Errorf("workerpool init error [%s]: %w", p.options.name, err))
+		p.options.errorHandler(fmt.Errorf("%w: worker name: %s -> %v", ErrInit, p.options.name, err))
 		return
 	}
 
 	defer func() {
 		err := clonedWorker.Close()
 		if err != nil {
-			p.options.errorHandler(fmt.Errorf("workerpool close error [%s]: %w", p.options.name, err))
+			p.options.errorHandler(fmt.Errorf("%w: worker name: %s -> %v", ErrClose, p.options.name, err))
 		}
 	}()
 
@@ -224,7 +224,7 @@ func (p *Pool) startWorker(inputChan <-chan []byte) {
 
 		result, send, err := clonedWorker.Action(x)
 		if err != nil {
-			p.options.errorHandler(fmt.Errorf("workerpool action error [%s]: %w", p.options.name, err))
+			p.options.errorHandler(fmt.Errorf("%w: worker name: %s -> %v", ErrAction, p.options.name, err))
 
 			atomic.AddUint64(p.fail, 1)
 		} else {

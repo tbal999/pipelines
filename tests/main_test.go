@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tbal999/pipelines/examples/readers"
-	"github.com/tbal999/pipelines/examples/workers"
-	pipelines "github.com/tbal999/pipelines/pkg"
-	"github.com/tbal999/pipelines/pkg/mocks"
+	"github.com/tbal999/pipelines/tests/readers"
+	"github.com/tbal999/pipelines/tests/workers"
+	pipelines "github.com/tbal999/pipelines"
+	"github.com/tbal999/pipelines/mocks"
 
 	"go.uber.org/mock/gomock"
 )

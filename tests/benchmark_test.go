@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/tbal999/pipelines/examples/readers"
-	"github.com/tbal999/pipelines/examples/workers"
-	pipelines "github.com/tbal999/pipelines/pkg"
+	"github.com/tbal999/pipelines/tests/readers"
+	"github.com/tbal999/pipelines/tests/workers"
+	pipelines "github.com/tbal999/pipelines"
 )
 
 func BenchmarkPipeline(b *testing.B) {

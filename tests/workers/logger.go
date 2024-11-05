@@ -3,7 +3,7 @@ package workers
 import (
 	"log"
     "gopkg.in/yaml.v2"
-	pipeline "github.com/tbal999/pipelines/pkg"
+	pipelines "github.com/tbal999/pipelines"
 )
 
 type Logger struct {
@@ -11,7 +11,7 @@ type Logger struct {
 	Log             bool
 }
 
-func (w *Logger) Clone() pipeline.Worker {
+func (w *Logger) Clone() pipelines.Worker {
 	clone := *w
 
 	return &clone

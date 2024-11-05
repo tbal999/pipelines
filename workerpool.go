@@ -197,15 +197,13 @@ func (p *Pool) Start(inputChan <-chan []byte) {
 func (p *Pool) startWorker(inputChan <-chan []byte) {
 	clonedWorker := p.options.worker.Clone()
 
-	err := clonedWorker.Initialise(p.options.configBytes)
-	if err != nil {
+	if err := clonedWorker.Initialise(p.options.configBytes); err != nil {
 		p.options.errorHandler(fmt.Errorf("%w: worker name: %s -> %v", ErrInit, p.options.name, err))
 		return
 	}
 
 	defer func() {
-		err := clonedWorker.Close()
-		if err != nil {
+		if err := clonedWorker.Close(); err != nil {
 			p.options.errorHandler(fmt.Errorf("%w: worker name: %s -> %v", ErrClose, p.options.name, err))
 		}
 	}()
@@ -216,7 +214,6 @@ func (p *Pool) startWorker(inputChan <-chan []byte) {
 			for range inputChan {
 				// drain and finish
 			}
-
 			return
 		default:
 			// continue processing
@@ -225,15 +222,13 @@ func (p *Pool) startWorker(inputChan <-chan []byte) {
 		result, send, err := clonedWorker.Action(x)
 		if err != nil {
 			p.options.errorHandler(fmt.Errorf("%w: worker name: %s -> %v", ErrAction, p.options.name, err))
-
 			atomic.AddUint64(p.fail, 1)
 		} else {
 			if !p.options.end && send {
-				for index := range p.Channels {
-					p.Channels[index] <- result
+				for _, ch := range p.Channels {
+					ch <- result
 				}
 			}
-
 			atomic.AddUint64(p.success, 1)
 		}
 

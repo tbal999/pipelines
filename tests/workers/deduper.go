@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 	"encoding/hex"
 	"gopkg.in/yaml.v2"
-	pipeline "github.com/tbal999/pipelines/pkg"
+	pipelines "github.com/tbal999/pipelines"
 )
 
 type Deduper struct {
 	SourceFolder string
 }
 
-func (w *Deduper) Clone() pipeline.Worker {
+func (w *Deduper) Clone() pipelines.Worker {
 	clone := *w
 
 	return &clone

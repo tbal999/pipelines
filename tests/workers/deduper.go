@@ -47,8 +47,5 @@ func (w *Deduper) Action(input []byte) ([]byte, bool, error) {
 
 func fileExists(filename string) bool {
 	_, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return true
+	return !os.IsNotExist(err)
 }

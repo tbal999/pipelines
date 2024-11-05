@@ -25,6 +25,9 @@ jobs:
         run: |
           sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
 
+      - name: Task Install
+        run: task install
+
       - name: Test
         run: |
           task generate
